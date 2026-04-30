@@ -251,7 +251,7 @@ if classify_clicked:
     if meas_date < dob:
         st.error("Measurement date cannot be before date of birth.")
       elif systolic <= diastolic:
-        st.error(
+          st.error(
             f"Invalid BP reading: systolic ({systolic} mmHg) must be greater than "
             f"diastolic ({diastolic} mmHg). Please check the values entered."
         )
