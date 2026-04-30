@@ -2,7 +2,7 @@
 app.py — Paediatric BP Centile Classifier
 ------------------------------------------
 Classifies blood pressure in children aged 1–17 using the
-ESH 2016 guidelines, with LMS-based height percentile calculation.
+ESH 2016 guidelines, with LMS-based height percentile calculation following UK-WHO reference data.
 
 Run with:  streamlit run app.py
 """
@@ -250,6 +250,18 @@ classify_clicked = st.button("Classify BP", type="primary", use_container_width=
 if classify_clicked:
     if meas_date < dob:
         st.error("Measurement date cannot be before date of birth.")
+      elif systolic <= diastolic:
+        st.error(
+            f"Invalid BP reading: systolic ({systolic} mmHg) must be greater than "
+            f"diastolic ({diastolic} mmHg). Please check the values entered."
+        )
+    elif systolic - diastolic < 10:
+        st.error(
+            f"Implausible BP reading: pulse pressure ({systolic - diastolic} mmHg) is "
+            f"too narrow. Please check the values entered."
+        )
+
+  
     else:
         age_years, age_months = calculate_age(dob, meas_date)
 
@@ -266,7 +278,7 @@ if classify_clicked:
 
             label     = RESULT_LABELS[category]
             card_cls  = CARD_CLASS[category]
-            flag_html = '<p class="flag-text">&#x2691; Refer for clinical review</p>' if flag else ""
+            flag_html = '<p class="flag-text">&#x2691; Flag for clinical review</p>' if flag else ""
 
             st.markdown(f"""
             <div class="result-card {card_cls}">
