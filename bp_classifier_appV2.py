@@ -1,7 +1,7 @@
 """
-app.py — Paediatric BP Centile Classifier
-------------------------------------------
-Classifies blood pressure in children aged 1–17 using the
+app.py: Paediatric BP Centile Classifier
+
+Classifies blood pressure in children aged 1-17 using the
 ESH 2016 guidelines, with LMS-based height percentile calculation following UK-WHO reference data.
 
 Run with:  streamlit run app.py
@@ -33,7 +33,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Load reference data ───────────────────────────────────────────────────────
+# Load reference data from WHO2006, UK90 and ESH 2016
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @st.cache_data
@@ -45,8 +45,8 @@ def load_data():
     uk90     = pd.read_excel(os.path.join(APP_DIR, "uk90_full.xlsx"), sheet_name="uk90_full")
     bp_table = pd.read_csv(os.path.join(APP_DIR, "esh2016_bp_table.csv"))
 
-    for df in [who_g02, who_g25, who_b02, who_b25]:
-        df["age"] = df["month"] / 12
+    for df in [who_g02, who_g25, who_b02, who_b25]:  #convert months to years for final output
+        df["age"] = df["month"] / 12      
 
     uk90 = uk90.rename(columns={"years": "age", "L.ht": "L", "M.ht": "M", "S.ht": "S"})
     uk90["sex_label"] = uk90["sex"].map({1: "M", 2: "F"})
@@ -61,10 +61,10 @@ except FileNotFoundError as e:
     missing_file = str(e)
 
 
-# ── Core functions ────────────────────────────────────────────────────────────
+# determine age in years and months (integers) from input DOB and measurement date
 def calculate_age(dob: date, measurement_date: date):
-    """Returns (years, months) as integers."""
-    years  = measurement_date.year  - dob.year
+   
+    years  = measurement_date.year - dob.year
     months = measurement_date.month - dob.month
     if measurement_date.day < dob.day:
         months -= 1
@@ -73,90 +73,92 @@ def calculate_age(dob: date, measurement_date: date):
         months += 12
     return years, months
 
-
+"""determine height percentile by applying LMS statistical framework, computing Z-score, CDF and round to nearest ESH reference percentile"""
 def height_to_percentile(height_cm, age_years, age_months, sex):
-    """LMS interpolation -> snapped to nearest ESH reference percentile."""
-    decimal_age = age_years + (age_months / 12.0)
+  
+    decimal_age = age_years + (age_months/12.0)
 
     if sex == "M":
-        if decimal_age <= 2:   df = who_b02
-        elif decimal_age <= 4: df = who_b25
-        else:                  df = uk90[uk90["sex_label"] == "M"]
+        if decimal_age <= 2:   
+          df = who_b02
+        elif decimal_age <= 4: 
+          df = who_b25
+        else:                  
+          df = uk90[uk90["sex_label"] == "M"]
     else:
-        if decimal_age <= 2:   df = who_g02
-        elif decimal_age <= 4: df = who_g25
-        else:                  df = uk90[uk90["sex_label"] == "F"]
+        if decimal_age <= 2:   
+          df = who_g02
+        elif decimal_age <= 4: 
+          df = who_g25
+        else:                  
+          df = uk90[uk90["sex_label"] == "F"]
 
-    L = np.interp(decimal_age, df["age"], df["L"])
-    M = np.interp(decimal_age, df["age"], df["M"])
-    S = np.interp(decimal_age, df["age"], df["S"])
+    L = np.interp(decimal_age,df["age"],df["L"])
+    M = np.interp(decimal_age,df["age"],df["M"])
+    S = np.interp(decimal_age,df["age"],df["S"])
 
-    if L != 0:
-        z = ((height_cm / M) ** L - 1) / (L * S)
+    if L!= 0:
+        z = ((height_cm/M) ** L-1) / (L*S)
     else:
-        z = np.log(height_cm / M) / S
+        z = np.log(height_cm/M) / S
 
     raw_pct  = norm.cdf(z) * 100
-    ESH_PCTS = [5, 10, 25, 50, 75, 90, 95]
+    ESH_PCTS = [5,10,25,50,75,90,95]
     snapped  = min(ESH_PCTS, key=lambda p: abs(p - raw_pct))
     return snapped, raw_pct
 
 
 def classify_bp(age_years, sex, height_pct, systolic, diastolic):
-    """
-    ESH 2016 BP classification.
-    Returns (category_key, description, flag, thresholds_dict)
-    """
-    if not (1 <= age_years <= 17):
-        return "unknown", "Age out of valid range (1-17 years).", False, {}
 
-    # Age >=16: adult fixed thresholds (ESH 2016 Table 1)
+    # age input validation
+    if not (1 <= age_years <= 17):
+        return "unknown","Age out of valid range (1-17 years).", False, {}
+
+    # BP Classification for age >=16 using adult fixed thresholds
     if age_years >= 16:
         if systolic < 130 and diastolic < 85:
-            return "normal",   "Normal BP - no action required.", False, {}
+            return "normal", "Normal BP - no action required.", False, {}
         elif systolic < 140 and diastolic < 90:
             return "highnorm", "High-normal BP - monitor and recheck.", False, {}
         elif systolic >= 140 and diastolic < 90:
-            return "iso",      "Isolated Systolic Hypertension - review clinically.", True, {}
+            return "iso","Isolated Systolic Hypertension - review clinically.", True, {}
         elif (160 <= systolic <= 179) or (100 <= diastolic <= 109):
-            return "stage2",   "Stage 2 Hypertension - urgent clinical review.", True, {}
+            return "stage2","Stage 2 Hypertension - urgent clinical review.", True, {}
         elif (140 <= systolic <= 159) or (90 <= diastolic <= 99):
-            return "stage1",   "Stage 1 Hypertension - further evaluation needed.", True, {}
+            return "stage1","Stage 1 Hypertension - further evaluation needed.", True, {}
         else:
-            return "unknown",  "BP exceeds ESH 2016 table range - clinical review required.", True, {}
+            return "unknown","BP exceeds ESH 2016 table range - clinical review required.", True, {}
 
-    # Age 0-15: percentile-based thresholds
-    subset          = bp_table[bp_table["sex"] == sex]
+    # BP percentile-based thresholds for ages 1-15
+    subset = bp_table[bp_table["sex"] == sex]
     closest_age_row = subset.iloc[(subset["age"] - age_years).abs().argsort()[:1]]
-    age_value       = closest_age_row["age"].values[0]
-    age_subset      = subset[subset["age"] == age_value]
-    row             = age_subset.iloc[
-        (age_subset["height_percentile"] - height_pct).abs().argsort()[:1]
-    ]
+    age_value = closest_age_row["age"].values[0]
+    age_subset = subset[subset["age"] == age_value]
+    row = age_subset.iloc[(age_subset["height_percentile"] - height_pct).abs().argsort()[:1]]
 
-    s90 = row["sys_90"].values[0];  d90 = row["dia_90"].values[0]
-    s95 = row["sys_95"].values[0];  d95 = row["dia_95"].values[0]
-    s99 = row["sys_99"].values[0];  d99 = row["dia_99"].values[0]
+    s90 = row["sys_90"].values[0]; d90 = row["dia_90"].values[0]
+    s95 = row["sys_95"].values[0]; d95 = row["dia_95"].values[0]
+    s99 = row["sys_99"].values[0]; d99 = row["dia_99"].values[0]
 
     thresholds = {
-        "90th":   (s90, d90),
-        "95th":   (s95, d95),
-        "99th+5": (s99 + 5, d99 + 5),
+        "90th":   (s90,d90),
+        "95th":   (s95,d95),
+        "99th+5": (s99 + 5,d99 + 5),
     }
 
-    # ISH checked before Stage 1 — SBP >=95th with DBP <90th must not fall into Stage 1
+    # BP Classification
     if systolic < s90 and diastolic < d90:
-        return "normal",   "Normal BP - no action required.", False, thresholds
+        return "normal", "Normal BP - no action required.", False, thresholds
     elif (systolic >= s90 or diastolic >= d90) and (systolic < s95 and diastolic < d95):
         return "highnorm", "High-normal BP - monitor and recheck.", False, thresholds
     elif systolic >= s95 and diastolic < d90:
-        return "iso",      "Isolated Systolic Hypertension - review clinically.", True, thresholds
+        return "iso","Isolated Systolic Hypertension - review clinically.", True, thresholds
     elif systolic > s99 + 5 or diastolic > d99 + 5:
-        return "stage2",   "Stage 2 Hypertension - urgent clinical review.", True, thresholds
+        return "stage2","Stage 2 Hypertension - urgent clinical review.", True, thresholds
     elif systolic >= s95 or diastolic >= d95:
-        return "stage1",   "Stage 1 Hypertension - further evaluation needed.", True, thresholds
+        return "stage1","Stage 1 Hypertension - further evaluation needed.", True, thresholds
     else:
-        return "unknown",  "Unable to classify - please check values entered.", False, thresholds
+        return "unknown","Unable to classify - please check values entered.", False, thresholds
 
 
 RESULT_LABELS = {
@@ -178,7 +180,7 @@ CARD_CLASS = {
 }
 
 
-# ── Header ────────────────────────────────────────────────────────────────────
+#APPLICATION HEADER
 st.title("Paediatric BP Centile Classifier")
 st.caption("Blood pressure classification for children aged 1-17  ·  ESH 2016 guidelines")
 st.divider()
@@ -190,7 +192,7 @@ if not table_ok:
     )
     st.stop()
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+#APPLICATION SIDEBAR
 with st.sidebar:
     st.header("About")
     st.caption(
@@ -207,7 +209,7 @@ with st.sidebar:
     st.caption("Group Project — Healthcare Technology")
 
 
-# ── Input form ────────────────────────────────────────────────────────────────
+#USER INPUT FORM
 st.subheader("Patient details")
 
 col1, col2 = st.columns(2)
@@ -244,24 +246,22 @@ with col5:
 
 st.divider()
 
-# ── Classify button ───────────────────────────────────────────────────────────
+#CLASSIFICATION BUTTON
 classify_clicked = st.button("Classify BP", type="primary", use_container_width=True)
 
+# Input validation of age and blood pressure entries
 if classify_clicked:
     if meas_date < dob:
         st.error("Measurement date cannot be before date of birth.")
     elif systolic <= diastolic:
           st.error(
             f"Invalid BP reading: systolic ({systolic} mmHg) must be greater than "
-            f"diastolic ({diastolic} mmHg). Please check the values entered."
-        )
-    elif systolic - diastolic < 10:
+            f"diastolic ({diastolic} mmHg). Please check the values entered.")
+    elif systolic-diastolic < 10:
         st.error(
             f"Implausible BP reading: pulse pressure ({systolic - diastolic} mmHg) is "
-            f"too narrow. Please check the values entered."
-        )
+            f"too narrow. Please check the values entered.")
 
-  
     else:
         age_years, age_months = calculate_age(dob, meas_date)
 
@@ -294,7 +294,7 @@ if classify_clicked:
             </div>
             """, unsafe_allow_html=True)
 
-            # ── Reference thresholds expander ─────────────────────────────
+            #REFERENCE THRESHOLDS EXPLANDER
             with st.expander("Reference thresholds for this patient"):
                 if thresholds:
                     tbl = pd.DataFrame({
@@ -314,7 +314,7 @@ if classify_clicked:
 | ISH | ≥ 140 | < 90 |
                     """)
 
-# ── Footer ────────────────────────────────────────────────────────────────────
+# Footer
 st.divider()
 st.caption(
     "Reference: Lurbe E et al. 2016 ESH guidelines for management of high BP "
