@@ -73,7 +73,7 @@ def calculate_age(dob: date, measurement_date: date):
         months += 12
     return years, months
 
-"""determine height percentile by applying LMS statistical framework, computing Z-score, CDF and round to nearest ESH reference percentile"""
+#determine height percentile by applying LMS statistical framework, computing Z-score, CDF and round to nearest ESH reference percentile
 def height_to_percentile(height_cm, age_years, age_months, sex):
   
     decimal_age = age_years + (age_months/12.0)
